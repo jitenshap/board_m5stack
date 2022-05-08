@@ -23,21 +23,24 @@
  */
 
 #include "esp_log.h"
+#include "string.h"
 #include "driver/gpio.h"
-#include <string.h>
 #include "board.h"
 #include "audio_error.h"
 #include "audio_mem.h"
 
-static const char *TAG = "M5STKC_AHAL";
+static const char *TAG = "M5Echo";
 
 esp_err_t get_i2c_pins(i2c_port_t port, i2c_config_t *i2c_config)
 {
     AUDIO_NULL_CHECK(TAG, i2c_config, return ESP_FAIL);
-    if (port == I2C_NUM_0 || port == I2C_NUM_1) {
-        i2c_config->sda_io_num = GPIO_NUM_21;
-        i2c_config->scl_io_num = GPIO_NUM_22;
-    } else {
+    if (port == I2C_NUM_0 || port == I2C_NUM_1) 
+    {
+        i2c_config->sda_io_num = GPIO_NUM_26;
+        i2c_config->scl_io_num = GPIO_NUM_32;
+    } 
+    else
+    {
         i2c_config->sda_io_num = -1;
         i2c_config->scl_io_num = -1;
         ESP_LOGE(TAG, "i2c port %d is not supported", port);
@@ -49,11 +52,15 @@ esp_err_t get_i2c_pins(i2c_port_t port, i2c_config_t *i2c_config)
 esp_err_t get_i2s_pins(i2s_port_t port, i2s_pin_config_t *i2s_config)
 {
     AUDIO_NULL_CHECK(TAG, i2s_config, return ESP_FAIL);
-    if (port == I2S_NUM_0) {
-        i2s_config = NULL;
-    } else if (port == I2S_NUM_1) {
-        i2s_config = NULL;
-    } else {
+    if (port == I2S_NUM_0) 
+    {
+        i2s_config->bck_io_num = GPIO_NUM_19;
+        i2s_config->ws_io_num = GPIO_NUM_33;
+        i2s_config->data_out_num = GPIO_NUM_22;
+        i2s_config->data_in_num = GPIO_NUM_23;
+    } 
+    else 
+    {
         memset(i2s_config, -1, sizeof(i2s_pin_config_t));
         ESP_LOGE(TAG, "i2s port %d is not supported", port);
         return ESP_FAIL;
@@ -81,18 +88,37 @@ esp_err_t get_spi_pins(spi_bus_config_t *spi_config, spi_device_interface_config
 
 esp_err_t i2s_mclk_gpio_select(i2s_port_t i2s_num, gpio_num_t gpio_num)
 {
-    ESP_LOGW(TAG, "I2S_MCLK is disabled.");
-    i2s_set_pin(0, NULL);
-    return ESP_OK;
+    if (i2s_num >= I2S_NUM_MAX) {
+        ESP_LOGE(TAG, "Does not support i2s number(%d)", i2s_num);
+        return ESP_ERR_INVALID_ARG;
+    }
+    else if (gpio_num != GPIO_NUM_0) {
+        ESP_LOGE(TAG, "Only support GPIO0, gpio_num:%d", gpio_num);
+        return ESP_ERR_INVALID_ARG;
+    }
+    else
+    {
+        ESP_LOGI(TAG, "I2S%d, MCLK output by GPIO%d", i2s_num, gpio_num);
+        if (i2s_num == I2S_NUM_0) 
+        {
+            if (gpio_num == GPIO_NUM_0) 
+            {
+                PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO0_U, FUNC_GPIO0_CLK_OUT1);
+                WRITE_PERI_REG(PIN_CTRL, 0xFFF0);
+            }
+            return ESP_OK;
+        } 
+    }
+    return ESP_ERR_INVALID_ARG;
 }
 
-// sdcard detect gpio
+// sdcard
+
 int8_t get_sdcard_intr_gpio(void)
 {
     return SDCARD_INTR_GPIO;
 }
 
-// max number of sdcard open file
 int8_t get_sdcard_open_file_num_max(void)
 {
     return SDCARD_OPEN_FILE_NUM_MAX;
@@ -107,7 +133,7 @@ int8_t get_input_volup_id(void)
 // volume down button
 int8_t get_input_voldown_id(void)
 {
-    return BUTTON_VOLDOWN_ID;
+    return BUTTON_VOLDN_ID;
 }
 
 // pa enable
@@ -134,13 +160,7 @@ int8_t get_input_play_id(void)
     return BUTTON_PLAY_ID;
 }
 
-// mute button
-int8_t get_input_mute_id(void)
+int8_t get_ns4168_mclk_gpio(void)
 {
-    return BUTTON_MUTE_ID;
-}
-
-int8_t get_red_led_gpio(void)
-{
-    return RED_LED_GPIO;
+    return NS4168_MCLK_GPIO;
 }

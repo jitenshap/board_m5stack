@@ -27,13 +27,15 @@
 #include "audio_mem.h"
 
 #include "periph_sdcard.h"
-#include "periph_button.h"
 #include "led_indicator.h"
-
+#include "periph_button.h"
+#include "led_bar_ws2812.h"
+#include "display_service.h"
 
 static const char *TAG = "AUDIO_BOARD";
 
-static audio_board_handle_t board_handle = 0;
+static audio_board_handle_t board_handle;
+
 
 audio_board_handle_t audio_board_init(void)
 {
@@ -43,14 +45,41 @@ audio_board_handle_t audio_board_init(void)
     }
     board_handle = (audio_board_handle_t) audio_calloc(1, sizeof(struct audio_board_handle));
     AUDIO_MEM_CHECK(TAG, board_handle, return NULL);
-    board_handle->audio_hal = audio_board_codec_init();
-
+#ifdef M5ECHO_I2S_MODE_ADC
+    board_handle->adc_line_in_hal = audio_board_adc_init();
+#else
+    board_handle->audio_hal = audio_board_dac_init();
+#endif
     return board_handle;
+}
+
+audio_hal_handle_t audio_board_dac_init(void)
+{
+    audio_hal_handle_t dac_hal = NULL;
+    audio_hal_codec_config_t audio_codec_cfg = AUDIO_CODEC_DEFAULT_CONFIG();
+    dac_hal = audio_hal_init(&audio_codec_cfg, &AUDIO_CODEC_NS4168_DEFAULT_HANDLE);
+    i2s_mclk_gpio_select(I2S_NUM_0, GPIO_NUM_0);
+    AUDIO_NULL_CHECK(TAG, dac_hal, return NULL);
+    return dac_hal;
+}
+
+audio_hal_handle_t audio_board_adc_init(void)
+{
+#ifdef M5ECHO_I2S_MODE_ADC
+    audio_hal_handle_t adc_hal = NULL;
+    audio_hal_codec_config_t audio_codec_cfg = AUDIO_CODEC_DEFAULT_CONFIG();
+    adc_hal = audio_hal_init(&audio_codec_cfg, &AUDIO_CODEC_SPM1423_DEFAULT_HANDLE);
+    AUDIO_NULL_CHECK(TAG, adc_hal, return NULL);
+    return adc_hal;
+#else
+    return ESP_OK;
+#endif
 }
 
 display_service_handle_t audio_board_led_init(void)
 {
-    led_indicator_handle_t led = led_indicator_init((gpio_num_t)get_red_led_gpio());
+    led_bar_ws2812_handle_t led = led_bar_ws2812_init(get_ws2812_gpio_pin(),  get_ws2812_num());
+    AUDIO_NULL_CHECK(TAG, led, return NULL);
     display_service_config_t display = {
         .based_cfg = {
             .task_stack = 0,
@@ -60,7 +89,7 @@ display_service_handle_t audio_board_led_init(void)
             .service_start = NULL,
             .service_stop = NULL,
             .service_destroy = NULL,
-            .service_ioctl = led_indicator_pattern,
+            .service_ioctl = led_bar_ws2812_pattern,
             .service_name = "DISPLAY_serv",
             .user_data = NULL,
         },
@@ -70,20 +99,12 @@ display_service_handle_t audio_board_led_init(void)
     return display_service_create(&display);
 }
 
-audio_hal_handle_t audio_board_codec_init(void)
-{
-    audio_hal_codec_config_t audio_codec_cfg = AUDIO_CODEC_DEFAULT_CONFIG();
-    audio_hal_handle_t codec_hal = audio_hal_init(&audio_codec_cfg, &AUDIO_NEW_CODEC_DEFAULT_HANDLE);
-    AUDIO_NULL_CHECK(TAG, codec_hal, return NULL);
-    return codec_hal;
-}
-
 esp_err_t audio_board_key_init(esp_periph_set_handle_t set)
 {
     esp_err_t ret = ESP_OK;
     periph_button_cfg_t btn_cfg = 
     {
-        .gpio_mask = (1ULL << get_input_play_id()) | (1ULL << get_input_mode_id()), //REC BTN & MODE BTN
+        .gpio_mask = (1ULL << get_input_mode_id()) //REC BTN & MODE BTN
     };
     esp_periph_handle_t button_handle = periph_button_init(&btn_cfg);
     AUDIO_NULL_CHECK(TAG, button_handle, return ESP_ERR_ADF_MEMORY_LACK);
@@ -96,14 +117,30 @@ esp_err_t audio_board_key_init(esp_periph_set_handle_t set)
 
 esp_err_t audio_board_sdcard_init(esp_periph_set_handle_t set, periph_sdcard_mode_t mode)
 {
+    if (mode != SD_MODE_1_LINE) {
+        ESP_LOGE(TAG, "current board only support 1-line SD mode!");
+        return ESP_FAIL;
+    }
     periph_sdcard_cfg_t sdcard_cfg = {
         .root = "/sdcard",
         .card_detect_pin = get_sdcard_intr_gpio(), // GPIO_NUM_34
+        .mode = mode
     };
     esp_periph_handle_t sdcard_handle = periph_sdcard_init(&sdcard_cfg);
     esp_err_t ret = esp_periph_start(set, sdcard_handle);
-    while (!periph_sdcard_is_mounted(sdcard_handle)) {
-        vTaskDelay(500 / portTICK_PERIOD_MS);
+    int retry_time = 5;
+    bool mount_flag = false;
+    while (retry_time --) {
+        if (periph_sdcard_is_mounted(sdcard_handle)) {
+            mount_flag = true;
+            break;
+        } else {
+            vTaskDelay(500 / portTICK_PERIOD_MS);
+        }
+    }
+    if (mount_flag == false) {
+        ESP_LOGE(TAG, "Sdcard mount failed");
+        return ESP_FAIL;
     }
     return ret;
 }
@@ -117,7 +154,7 @@ esp_err_t audio_board_deinit(audio_board_handle_t audio_board)
 {
     esp_err_t ret = ESP_OK;
     ret |= audio_hal_deinit(audio_board->audio_hal);
-    free(audio_board);
+    audio_free(audio_board);
     board_handle = NULL;
     return ret;
 }

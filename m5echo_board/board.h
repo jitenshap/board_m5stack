@@ -29,21 +29,26 @@
 #include "board_def.h"
 #include "board_pins_config.h"
 #include "esp_peripherals.h"
+#include "display_service.h"
 #include "periph_sdcard.h"
-
-#define AXP_ADDR 0x34
-
 
 #ifdef __cplusplus
 extern "C" {
+#endif
+
+#ifdef M5ECHO_I2S_MODE_ADC
+extern audio_hal_func_t AUDIO_CODEC_SPM1423_DEFAULT_HANDLE;
+#else
+extern audio_hal_func_t AUDIO_CODEC_NS4168_DEFAULT_HANDLE;
 #endif
 
 /**
  * @brief Audio board handle
  */
 struct audio_board_handle {
-    audio_hal_handle_t audio_hal;    /*!< pa hardware abstract layer handle */
-    audio_hal_handle_t adc_hal;      /*!< adc hardware abstract layer handle */
+    audio_hal_handle_t audio_hal;           /*!< pa hardware abstract layer handle */
+    audio_hal_handle_t adc_line_in_hal;     /*!< adc hardware abstract layer handle */
+    audio_hal_handle_t adc_ref_pa_hal;      /*!< adc hardware abstract layer handle */
 };
 
 typedef struct audio_board_handle *audio_board_handle_t;
@@ -56,18 +61,25 @@ typedef struct audio_board_handle *audio_board_handle_t;
 audio_board_handle_t audio_board_init(void);
 
 /**
- * @brief Initialize codec
+ * @brief Initialize DAC chip
  *
  * @return The audio hal handle
  */
-audio_hal_handle_t audio_board_codec_init(void);
+audio_hal_handle_t audio_board_dac_init(void);
 
 /**
- * @brief Initialize adc
+ * @brief Initialize ADC chip
  *
- * @return The adc hal handle
+ * @return The audio hal handle
  */
 audio_hal_handle_t audio_board_adc_init(void);
+
+/**
+ * @brief Initialize led peripheral and display service
+ *
+ * @return The audio display service handle
+ */
+display_service_handle_t audio_board_led_init(void);
 
 /**
  * @brief Initialize key peripheral
@@ -103,12 +115,24 @@ audio_board_handle_t audio_board_get_handle(void);
  *
  * @param audio_board The handle of audio board
  *
- * @return  0       success,
- *          others  fail
+ * @return  ESP_OK,      success
+ *          others,      fail
  */
 esp_err_t audio_board_deinit(audio_board_handle_t audio_board);
 
-int8_t get_red_led_gpio(void);
+/**
+ * @brief Get the ws2812 gpio pin
+ *
+ * @return  GPIO pin
+ */
+int8_t get_ws2812_gpio_pin(void);
+
+/**
+ * @brief Get the number of ws2812
+ *
+ * @return  number of ws2812
+ */
+int get_ws2812_num(void);
 
 #ifdef __cplusplus
 }

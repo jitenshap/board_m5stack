@@ -1,15 +1,17 @@
 menu "Additional Audio Board"
+    depends on AUDIO_BOARD_CUSTOM
+    choice CUSTOM_AUDIO_BOARD
+        prompt "My audio board"
+        help
+            Select an audio board to use with the ESP-ADF
+    config M5StickC_SPK_HAT
+        bool "M5StickC SPK HAT"
+    config M5ECHO
+        bool "M5Echo"
+    endchoice
 
-choice CUSTOM_AUDIO_BOARD
-    prompt "My audio board"
-    default M5StickC_SPK_HAT
-    help
-        Select an audio board to use with the ESP-ADF
-
-config M5StickC_SPK_HAT
-    bool "M5StickC SPK HAT"
-
-endchoice
-
+    config M5ECHO_I2S_MODE_ADC
+        depends on M5ECHO
+        bool "Enabling I2S ADC(DAC is disabled)"
+        default "n"
 endmenu
-
